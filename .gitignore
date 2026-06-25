@@ -1,0 +1,6 @@
+__pycache__/
+.spec-workflow/
+docs/
+.env
+models_cache/
+*.pyc
