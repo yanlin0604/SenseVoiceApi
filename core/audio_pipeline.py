@@ -2,20 +2,35 @@ import io
 import asyncio
 import time
 import numpy as np
-import torch
+from dataclasses import dataclass
 from loguru import logger
 from models.engine_loader import engine_loader
+from core.speaker_embedding import extract_speaker_embedding
 from core.text_postprocess import normalize_asr_text
+from core.voiceprint_store import VoiceprintMatch, get_voiceprint_store
 from config import config
 
+
+@dataclass
+class ResolvedSpeaker:
+    label: str
+    speaker_id: str = None
+    speaker_name: str = None
+    speaker_title: str = None
+    speaker_type: str = "session"
+    score: float = None
+
+
 class AudioPipeline:
-    def __init__(self, session_id: str, mode: int = 1):
+    def __init__(self, session_id: str, mode: int = 1, hospital_code: str = None, dept_code: str = None):
         """
         :param session_id: 当前连接的会话ID
         :param mode: 1 为纯语音识别，2 为说话人分离
         """
         self.session_id = session_id
         self.mode = mode
+        self.hospital_code = hospital_code
+        self.dept_code = dept_code
         
         # 音频块缓冲
         self.audio_buffer = np.array([], dtype=np.float32)
@@ -38,6 +53,8 @@ class AudioPipeline:
         self.speaker_embeddings = {}
         self.speaker_counter = 0
         self.sv_threshold = config.sv_similarity_threshold
+        # 上一位已识别医生优先匹配，避免同一查房医生在短时间内来回跳变。
+        self.priority_doctor_profile_id = None
         
         # 原始二进制缓冲
         self.byte_buffer = bytearray()
@@ -322,72 +339,77 @@ class AudioPipeline:
         except Exception as e:
             logger.error(f"处理音频段时发生错误: {e}")
 
-    async def _identify_speaker(self, segment_audio: np.ndarray) -> str:
+    async def _identify_speaker(self, segment_audio: np.ndarray) -> ResolvedSpeaker:
         """
         声纹识别：提取音频段的 embedding 并与已知说话人进行余弦相似度比对。
         """
-        if not engine_loader.sv_pipeline or not hasattr(engine_loader.sv_pipeline, 'model'):
-            return "未知用户"
-        
         try:
-            # 准备 Tensor 输入给 PyTorch 模型
-            tensor_audio = torch.from_numpy(segment_audio).unsqueeze(0)
-            # 如果模型在 GPU 上，移动 tensor 到对应的 device
-            if hasattr(engine_loader.sv_pipeline.model, 'device'):
-                tensor_audio = tensor_audio.to(engine_loader.sv_pipeline.model.device)
-                
-            # 直接调用底层模型的 forward 方法提取 embedding
-            sv_res = await asyncio.to_thread(
-                engine_loader.sv_pipeline.model,
-                tensor_audio
-            )
-            
-            emb = None
-            if isinstance(sv_res, torch.Tensor):
-                emb = sv_res.cpu().numpy()
-            elif isinstance(sv_res, np.ndarray):
-                emb = sv_res
-            elif isinstance(sv_res, list) and len(sv_res) > 0:
-                emb = sv_res[0].cpu().numpy() if isinstance(sv_res[0], torch.Tensor) else sv_res[0]
-                
-            if emb is not None:
-                emb_flat = np.array(emb).flatten()
-                norm1 = np.linalg.norm(emb_flat)
-                
-                best_spk = None
-                best_score = -1.0
-                
-                if norm1 > 0:
-                    # 与当前会话中已经记录的所有人进行余弦相似度对比
-                    for spk_id, stored_emb in self.speaker_embeddings.items():
-                        norm2 = np.linalg.norm(stored_emb)
-                        if norm2 > 0:
-                            score = np.dot(emb_flat, stored_emb) / (norm1 * norm2)
-                            if score > best_score:
-                                best_score = float(score)
-                                best_spk = spk_id
-                                
-                    # 大于阈值认为是同一个人，否则新建角色
-                    if best_spk and best_score >= self.sv_threshold:
-                        speaker = best_spk
-                        logger.info(f"[{self.session_id}] 匹配到已有说话人: {speaker} (相似度: {best_score:.3f})")
-                    else:
-                        self.speaker_counter += 1
-                        speaker = f"用户{self.speaker_counter}"
-                        self.speaker_embeddings[speaker] = emb_flat
-                        logger.info(f"[{self.session_id}] 创建新说话人: {speaker} (最高相似度: {best_score:.3f})")
-                    
-                    return speaker
-            else:
-                # 打印出真实的返回结构以便调试
-                logger.warning(f"SV Pipeline 未找到特征字段。实际返回结构: {type(sv_res)}, 内容: {str(sv_res)[:200]}")
-                
+            emb_flat = await extract_speaker_embedding(segment_audio)
+            doctor_match = self._match_doctor_voiceprint(emb_flat)
+            if doctor_match:
+                profile = doctor_match.profile
+                self.priority_doctor_profile_id = profile.profile_id
+                logger.info(
+                    f"[{self.session_id}] 匹配到医生声纹: {profile.display_label} "
+                    f"(doctorCode={profile.doctor_code}, 相似度: {doctor_match.score:.3f})"
+                )
+                return ResolvedSpeaker(
+                    label=profile.display_label,
+                    speaker_id=profile.doctor_code,
+                    speaker_name=profile.speaker_name,
+                    speaker_title=profile.speaker_title,
+                    speaker_type="doctor",
+                    score=doctor_match.score,
+                )
+
+            return self._match_session_speaker(emb_flat)
+
         except Exception as e:
             logger.warning(f"SV 特征提取或比对失败: {e}")
-        
-        return "未知用户"
 
-    async def _send_result(self, websocket, text: str, is_final: bool, speaker: str = None):
+        return ResolvedSpeaker(label="未知用户", speaker_type="unknown")
+
+    def _match_doctor_voiceprint(self, emb_flat: np.ndarray) -> VoiceprintMatch:
+        store = get_voiceprint_store()
+        if self.priority_doctor_profile_id:
+            match = store.match_profile(self.priority_doctor_profile_id, emb_flat)
+            if match:
+                return match
+        return store.search(emb_flat, hospital_code=self.hospital_code, dept_code=self.dept_code)
+
+    def _match_session_speaker(self, emb_flat: np.ndarray) -> ResolvedSpeaker:
+        norm1 = np.linalg.norm(emb_flat)
+        best_spk = None
+        best_score = -1.0
+
+        if norm1 > 0:
+            # 与当前会话中已经记录的所有人进行余弦相似度对比
+            for spk_id, stored_emb in self.speaker_embeddings.items():
+                norm2 = np.linalg.norm(stored_emb)
+                if norm2 > 0:
+                    score = np.dot(emb_flat, stored_emb) / (norm1 * norm2)
+                    if score > best_score:
+                        best_score = float(score)
+                        best_spk = spk_id
+
+        # 大于阈值认为是同一个人，否则新建角色
+        if best_spk and best_score >= self.sv_threshold:
+            speaker = best_spk
+            logger.info(f"[{self.session_id}] 匹配到已有说话人: {speaker} (相似度: {best_score:.3f})")
+        else:
+            self.speaker_counter += 1
+            speaker = f"用户{self.speaker_counter}"
+            self.speaker_embeddings[speaker] = emb_flat
+            logger.info(f"[{self.session_id}] 创建新说话人: {speaker} (最高相似度: {best_score:.3f})")
+
+        return ResolvedSpeaker(
+            label=speaker,
+            speaker_id=speaker,
+            speaker_type="session",
+            score=best_score,
+        )
+
+    async def _send_result(self, websocket, text: str, is_final: bool, speaker: ResolvedSpeaker = None):
         """
         统一的 WebSocket 消息发送方法。
         
@@ -397,13 +419,22 @@ class AudioPipeline:
         """
         if websocket:
             try:
-                await websocket.send_json({
+                payload = {
                     "session_id": self.session_id,
                     "text": text,
-                    "speaker": speaker,
+                    "speaker": speaker.label if speaker else None,
                     "is_final": is_final,
                     "mode": "refined" if is_final else "streaming",
-                })
+                }
+                if speaker:
+                    payload.update({
+                        "speaker_id": speaker.speaker_id,
+                        "speaker_name": speaker.speaker_name,
+                        "speaker_title": speaker.speaker_title,
+                        "speaker_type": speaker.speaker_type,
+                        "speaker_score": speaker.score,
+                    })
+                await websocket.send_json(payload)
             except Exception as ws_err:
                 logger.debug(f"回传 WebSocket 失败: {ws_err}")
 

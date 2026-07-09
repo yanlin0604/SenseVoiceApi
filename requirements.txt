@@ -31,3 +31,4 @@ scikit-learn
 kaldiio
 matplotlib
 pydub
+pymilvus>=2.4.0

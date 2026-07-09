@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     
     # 声纹比对相似度阈值
     sv_similarity_threshold: float = 0.6
+    doctor_voiceprint_match_threshold: float = 0.85
+
+    # 医生声纹库配置。默认使用 Milvus；开发环境缺少 Milvus 或 pymilvus 时会降级为本地 JSON。
+    voiceprint_store_backend: str = "milvus"
+    voiceprint_milvus_host: str = "192.168.2.43"
+    voiceprint_milvus_port: int = 19530
+    voiceprint_milvus_alias: str = "voiceprint"
+    voiceprint_milvus_database: str = "vocal_print"
+    voiceprint_milvus_collection: str = "medai_doctor_voiceprints"
+    voiceprint_local_store_path: str = "./models_cache/doctor_voiceprints.json"
     
     # Audio slicing & VAD param
     vad_max_end_silence_time: int = 800

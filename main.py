@@ -2,14 +2,17 @@ import uuid
 import io
 import asyncio
 import torchaudio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
+from typing import Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, UploadFile, HTTPException
 from loguru import logger
 import uvicorn
 
 from config import config
 from models.engine_loader import engine_loader
 from core.audio_pipeline import AudioPipeline
+from core.speaker_embedding import extract_speaker_embedding
 from core.text_postprocess import normalize_asr_text
+from core.voiceprint_store import VoiceprintProfile, get_voiceprint_store
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -43,6 +46,7 @@ async def health_check():
         "streaming_enabled": config.enable_streaming,
         "asr_model": config.asr_model,
         "is_2pass": config.is_2pass_mode,
+        "voiceprint_store": config.voiceprint_store_backend,
     }
 
 @app.get("/api/models")
@@ -195,8 +199,105 @@ async def offline_diarize(audio_file: UploadFile = File(...)):
         logger.error(f"离线说话人分离与识别失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/voiceprints/enroll")
+async def enroll_voiceprint(
+    audio_file: UploadFile = File(...),
+    profile_id: str = Form(...),
+    doctor_code: str = Form(...),
+    speaker_name: str = Form(...),
+    speaker_title: str = Form(""),
+    hospital_code: str = Form("default"),
+    dept_code: str = Form(""),
+    match_threshold: Optional[float] = Form(None),
+    is_active: bool = Form(True),
+):
+    """
+    注册或覆盖医生声纹。业务元数据由后端管理，ASR 服务负责提取向量并写入声纹库。
+    """
+    try:
+        wav_np = await _load_audio_as_16k_mono(audio_file)
+        embedding = await extract_speaker_embedding(wav_np)
+        threshold = match_threshold or config.doctor_voiceprint_match_threshold
+        profile = VoiceprintProfile(
+            profile_id=profile_id,
+            doctor_code=doctor_code,
+            speaker_name=speaker_name,
+            speaker_title=speaker_title,
+            hospital_code=hospital_code or "default",
+            dept_code=dept_code or "",
+            match_threshold=float(threshold),
+            is_active=bool(is_active),
+        )
+        get_voiceprint_store().upsert(profile, embedding)
+        logger.info(f"医生声纹注册完成: profileId={profile_id}, doctorCode={doctor_code}, speaker={profile.display_label}")
+        return {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "vectorId": profile_id,
+                "doctorCode": doctor_code,
+                "speakerName": speaker_name,
+                "speakerTitle": speaker_title,
+                "displayLabel": profile.display_label,
+                "embeddingDim": int(len(embedding)),
+                "voiceprintVersion": config.speaker_sv_revision,
+                "matchThreshold": float(threshold),
+                "storeBackend": config.voiceprint_store_backend,
+            },
+        }
+    except Exception as e:
+        logger.error(f"医生声纹注册失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/voiceprints/match")
+async def match_voiceprint(
+    audio_file: UploadFile = File(...),
+    hospital_code: str = Form("default"),
+    dept_code: str = Form(""),
+):
+    """
+    调试用声纹匹配接口，用于后台录入后校验命中结果。
+    """
+    try:
+        wav_np = await _load_audio_as_16k_mono(audio_file)
+        embedding = await extract_speaker_embedding(wav_np)
+        match = get_voiceprint_store().search(embedding, hospital_code=hospital_code, dept_code=dept_code)
+        if not match:
+            return {"code": 200, "message": "success", "data": {"matched": False}}
+        profile = match.profile
+        return {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "matched": True,
+                "vectorId": profile.profile_id,
+                "doctorCode": profile.doctor_code,
+                "speakerName": profile.speaker_name,
+                "speakerTitle": profile.speaker_title,
+                "displayLabel": profile.display_label,
+                "score": match.score,
+            },
+        }
+    except Exception as e:
+        logger.error(f"医生声纹匹配失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _load_audio_as_16k_mono(audio_file: UploadFile):
+    audio_bytes = await audio_file.read()
+    waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
+    if sample_rate != 16000:
+        resampler = torchaudio.transforms.Resample(sample_rate, 16000)
+        waveform = resampler(waveform)
+    wav_np = waveform[0].numpy()
+    if len(wav_np) < 16000:
+        raise HTTPException(status_code=400, detail="声纹录入音频过短，至少需要约 1 秒有效语音")
+    return wav_np
+
+
 @app.websocket("/ws/asr")
-async def asr_websocket(websocket: WebSocket, mode: int = 1):
+async def asr_websocket(websocket: WebSocket, mode: int = 1, hospital_code: str = None, dept_code: str = None):
     """
     WebSocket 音频接收端点。
     :param mode: 1 为纯语音识别，2 为说话人分离。可通过 query param 指定 /ws/asr?mode=2
@@ -205,7 +306,7 @@ async def asr_websocket(websocket: WebSocket, mode: int = 1):
     session_id = str(uuid.uuid4())
     logger.info(f"客户端连接成功, Session ID: {session_id}, Mode: {mode}")
     
-    pipeline = AudioPipeline(session_id=session_id, mode=mode)
+    pipeline = AudioPipeline(session_id=session_id, mode=mode, hospital_code=hospital_code, dept_code=dept_code)
     
     try:
         while True:
