@@ -77,8 +77,12 @@ async def offline_asr(audio_file: UploadFile = File(...)):
         audio_bytes = await audio_file.read()
         logger.info(f"开始对音频文件 {audio_file.filename} 进行整段离线识别...")
         
-        # 先用 torchaudio 读取并重采样到 16000Hz
-        waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
+        # 加载音频（支持 torchaudio + pydub 兜底）并重采样到 16000Hz
+        try:
+            waveform, sample_rate = load_audio_to_waveform(audio_bytes, audio_file.filename)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+            
         if sample_rate != 16000:
             resampler = torchaudio.transforms.Resample(sample_rate, 16000)
             waveform = resampler(waveform)
@@ -130,8 +134,11 @@ async def offline_diarize(audio_file: UploadFile = File(...)):
         # 读取上传的音频文件内容
         audio_bytes = await audio_file.read()
         
-        # 先用 torchaudio 读取音频为 waveform
-        waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
+        # 加载音频（支持 torchaudio + pydub 兜底）并重采样到 16000Hz
+        try:
+            waveform, sample_rate = load_audio_to_waveform(audio_bytes, audio_file.filename)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
         
         # 统一重采样到 16000Hz（SenseVoice 和 CampPlus 都需要 16k）
         if sample_rate != 16000:
@@ -284,9 +291,46 @@ async def match_voiceprint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def load_audio_to_waveform(audio_bytes: bytes, filename: Optional[str] = None):
+    """
+    尝试从字节流中加载音频。如果 torchaudio.load 失败，则使用 pydub 兜底解析。
+    返回 (waveform, sample_rate)
+    """
+    try:
+        return torchaudio.load(io.BytesIO(audio_bytes))
+    except Exception as e:
+        logger.warning(f"torchaudio.load 加载音频失败 ({e})，尝试使用 pydub 兜底解析...")
+        try:
+            from pydub import AudioSegment
+            ext = None
+            if filename:
+                ext_parts = filename.split('.')
+                if len(ext_parts) > 1:
+                    ext = ext_parts[-1].lower()
+            
+            # 使用 pydub 读取，并导出为标准 wav 格式供 torchaudio 读取
+            audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format=ext)
+            wav_io = io.BytesIO()
+            audio.export(wav_io, format="wav")
+            wav_io.seek(0)
+            return torchaudio.load(wav_io)
+        except Exception as pe:
+            logger.error(f"pydub 解析音频也失败: {pe}")
+            raise ValueError(f"不支持的音频文件格式或文件损坏: {pe}")
+
+
 async def _load_audio_as_16k_mono(audio_file: UploadFile):
     audio_bytes = await audio_file.read()
-    waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
+    filename = audio_file.filename or "voiceprint.wav"
+    logger.info(f"[_load_audio_as_16k_mono] 收到声纹音频注册/匹配请求. filename={filename}, size={len(audio_bytes)} bytes, content_type={audio_file.content_type}")
+    if len(audio_bytes) > 8:
+        logger.info(f"[_load_audio_as_16k_mono] 音频前8字节: {audio_bytes[:8].hex()}")
+    
+    try:
+        waveform, sample_rate = load_audio_to_waveform(audio_bytes, filename)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+        
     if sample_rate != 16000:
         resampler = torchaudio.transforms.Resample(sample_rate, 16000)
         waveform = resampler(waveform)
