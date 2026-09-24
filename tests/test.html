@@ -2,192 +2,206 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Medical ASR 实时测试工具</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical ASR 综合测试工作台</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background: #f0f2f5; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #333; margin-bottom: 16px; }
-        
-        /* 模型信息栏 */
-        .model-info {
-            background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px;
-            padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #586069;
-            display: flex; gap: 20px; flex-wrap: wrap; align-items: center;
-        }
-        .model-info .badge {
-            display: inline-block; padding: 2px 8px; border-radius: 12px;
-            font-size: 12px; font-weight: 600; color: white;
-        }
-        .badge-streaming { background: #28a745; }
-        .badge-2pass { background: #6f42c1; }
-        .badge-offline { background: #6c757d; }
-        
-        .controls { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; justify-content: center; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 4px; color: white; background-color: #1890ff; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #btnStop { background-color: #ff4d4f; }
-        #btnFlush { background-color: #52c41a; }
-        
-        /* 实时与最终识别结果区域 */
-        .result-area {
-            border: 1px solid #e1e4e8; border-radius: 6px; padding: 16px;
-            margin-bottom: 16px; min-height: 300px; max-height: 500px; overflow-y: auto; background: #fafbfc;
-        }
-        
-        /* 流式中间结果动态项 */
-        .streaming-item {
-            border-left: 3px solid #0366d6 !important;
-            background-color: #f0f8ff !important;
-            color: #0366d6 !important;
-            font-style: italic;
-        }
-        
-        .final-results { margin-top: 0; }
-        .final-results h3 { font-size: 16px; color: #333; margin-bottom: 12px; }
-        .final-item {
-            background: white; border: 1px solid #e1e4e8; border-radius: 4px;
-            padding: 8px 12px; margin-bottom: 6px; font-size: 15px;
-            display: flex; align-items: baseline; gap: 8px;
-            animation: fadeIn 0.3s ease;
-        }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-        .final-item .speaker-tag {
-            background: #6f42c1; color: white; padding: 1px 6px; border-radius: 3px;
-            font-size: 12px; white-space: nowrap;
-        }
-        .final-item .refined-tag {
-            background: #28a745; color: white; padding: 1px 6px; border-radius: 3px;
-            font-size: 11px; white-space: nowrap;
-        }
-        .final-item .text { flex: 1; color: #24292e; }
-        
-        /* 日志区域 */
-        .log-box {
-            width: 100%; height: 200px; overflow-y: auto;
-            background: #282c34; color: #abb2bf; padding: 10px; border-radius: 4px;
-            font-family: monospace; font-size: 12px; white-space: pre-wrap;
-        }
-        .config { display: flex; gap: 10px; margin-bottom: 16px; justify-content: center; align-items: center; flex-wrap: wrap; }
-        select, input[type="text"] { padding: 8px; font-size: 14px; }
-        
-        .section-divider { margin: 24px 0; border: 0; border-top: 1px solid #eee; }
-        
-        /* 统计信息 */
-        .stats {
-            display: flex; gap: 16px; margin-bottom: 12px; font-size: 13px; color: #586069;
-        }
-        .stats span { background: #f1f3f5; padding: 2px 8px; border-radius: 4px; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; background: #f0f2f5; color: #333; padding: 20px; }
+        .container { max-width: 1100px; margin: auto; }
+        .header { text-align: center; margin-bottom: 24px; }
+        .header h1 { margin: 0 0 8px 0; color: #1a1a1a; font-size: 26px; }
+        .header p { margin: 0; color: #666; font-size: 14px; }
+        .card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .card h2 { margin-top: 0; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #eee; padding-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+        .controls { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+        button { padding: 9px 18px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; border-radius: 6px; color: white; background-color: #1890ff; transition: all 0.2s; }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
+        button:disabled { background-color: #d9d9d9 !important; color: #8c8c8c; cursor: not-allowed; transform: none; }
+        .btn-danger { background-color: #ff4d4f; }
+        .btn-success { background-color: #52c41a; }
+        .btn-secondary { background-color: #8c8c8c; }
+        .btn-purple { background-color: #722ed1; }
+        .btn-cyan { background-color: #13c2c2; }
+        .log-box { width: 100%; height: 260px; overflow-y: auto; background: #282c34; color: #abb2bf; padding: 12px; border-radius: 6px; font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+        .config-row { display: flex; gap: 16px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+        label { font-size: 14px; font-weight: 500; color: #444; }
+        input[type="text"], select { padding: 8px 12px; font-size: 14px; border: 1px solid #d9d9d9; border-radius: 4px; outline: none; }
+        input[type="text"]:focus, select:focus { border-color: #40a9ff; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+        th { background: #fafafa; font-weight: 600; color: #595959; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+        .badge-blue { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
+        .badge-green { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        .badge-purple { background: #f9f0ff; color: #722ed1; border: 1px solid #d3adf7; }
+        .status-msg { margin-top: 8px; font-size: 13px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Medical ASR 实时测试工具</h2>
-    
-    <!-- 模型信息（页面加载时自动获取） -->
-    <div class="model-info" id="modelInfo">
-        <span>加载模型信息中...</span>
-    </div>
-    
-    <div class="config">
-        <label>服务端地址:</label>
-        <input type="text" id="wsUrl" value="ws://192.168.2.43:8000/ws/asr" style="width: 220px;">
-        <label>工作模式:</label>
-        <select id="modeSelect">
-            <option value="1">模式 1：纯语音识别 (无说话人)</option>
-            <option value="2" selected>模式 2：实时识别 + 声纹分离</option>
-        </select>
+    <div class="header">
+        <h1>🏥 Medical ASR 综合测试工作台</h1>
+        <p>集成 SenseVoice 实时转写、声纹识别与管理、离线语音分离全功能测试面板</p>
     </div>
 
-    <div class="controls">
-        <button id="btnStart">🎤 开始录音并连接</button>
-        <button id="btnFlush" disabled>▶️ 发送断句(Flush)</button>
-        <button id="btnStop" disabled>⏹ 停止录音</button>
-    </div>
-    
-    <!-- 统计信息 -->
-    <div class="stats">
-        <span>🔊 句段数: <strong id="segCount">0</strong></span>
-        <span>⏱️ 流式延迟: <strong id="streamLatency">-</strong></span>
-    </div>
+    <!-- 1. 实时语音转写测试卡片 -->
+    <div class="card">
+        <h2>
+            <span>🎤 实时语音识别与声纹跟踪</span>
+            <span id="connStatus" class="badge badge-blue">未连接</span>
+        </h2>
+        
+        <div class="config-row">
+            <div>
+                <label>服务端 WS 地址:</label>
+                <input type="text" id="wsUrl" value="ws://127.0.0.1:8000/ws/asr" style="width: 220px;">
+            </div>
+            <div>
+                <label>工作模式:</label>
+                <select id="modeSelect">
+                    <option value="1">模式 1：纯语音识别 (无说话人)</option>
+                    <option value="2">模式 2：实时识别 + 会话临时盲分</option>
+                    <option value="3" selected>模式 3：声纹库实名识别 + 档案联动 (姓名/头像/角色)</option>
+                </select>
+            </div>
+            <div>
+                <label>用户 ID (定向候选人优化):</label>
+                <input type="text" id="userIdInput" placeholder="例如: 101 (可选)" style="width: 150px;">
+            </div>
+        </div>
 
-    <div class="final-results">
-        <h3>📝 识别结果展示（实时加字，精修替换）</h3>
-        <div id="finalResults" class="result-area">
-            <div id="emptyTip" style="color: #bbb; font-style: italic; font-size: 14px;">等待语音输入...</div>
+        <div class="controls">
+            <button id="btnStart" class="btn-success">🎤 开始录音并连接</button>
+            <button id="btnFlush" class="btn-cyan" disabled>▶️ 发送断句 (Flush)</button>
+            <button id="btnStop" class="btn-danger" disabled>⏹ 停止录音</button>
+            <button id="btnClearLog" class="btn-secondary" onclick="document.getElementById('logBox').textContent=''">🧹 清空日志</button>
+        </div>
+
+        <!-- 2pass 即时流式出字 (边说边出字) 实时动态跳字面板 -->
+        <div style="background: #1e1e1e; border: 1px solid #3c3c3c; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 13px; font-weight: 600; color: #61afef;">⚡ 2pass 即时流式出字 (边说边出字)</span>
+                <span id="streamingTag" class="badge badge-purple" style="display: none; animation: pulse 1.5s infinite;">正在说话识别中...</span>
+            </div>
+            <div id="livePreviewBox" style="font-size: 15px; color: #98c379; min-height: 28px; line-height: 28px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; word-break: break-all;">
+                <span style="color: #666; font-size: 13px;">（说话时文字将在此实时动态跳出...）</span>
+            </div>
+        </div>
+
+        <div>
+            <strong>已断句确认的历史文本与事件日志：</strong>
+            <div id="logBox" class="log-box" style="margin-top: 8px;"></div>
         </div>
     </div>
 
-    <hr class="section-divider">
-    
-    <details>
-        <summary style="cursor:pointer; color: #586069; margin-bottom: 8px;"><strong>📋 调试日志</strong></summary>
-        <div id="logBox" class="log-box"></div>
-    </details>
+    <!-- 2. 声纹特征管理卡片 -->
+    <div class="card">
+        <h2>
+            <span>👤 声纹库管理与 1:1/1:N 验证</span>
+            <button class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="loadVoiceprintList()">🔄 刷新列表</button>
+        </h2>
 
-    <hr class="section-divider">
-    
-    <h2>离线音频分离 (Diarization) 测试</h2>
-    <div class="controls">
-        <input type="file" id="audioFile" accept="audio/*">
-        <button id="btnUpload" style="background-color: #722ed1;">📁 上传并分离</button>
-        <button id="btnUploadWhole" style="background-color: #13c2c2;">🔊 仅识别整段 (不分离)</button>
+        <div class="grid-2">
+            <!-- 注册新声纹 -->
+            <div style="background: #fafafa; padding: 14px; border-radius: 6px; border: 1px solid #f0f0f0;">
+                <h3 style="margin: 0 0 12px 0; font-size: 15px; color: #262626;">➕ 录入新声纹特征</h3>
+                <div style="margin-bottom: 10px;">
+                    <label style="display:block; margin-bottom: 4px;">特征ID (用户ID/工号) *:</label>
+                    <input type="text" id="regId" placeholder="例如: doc_101" style="width: 100%;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display:block; margin-bottom: 4px;">特征备注 (姓名/角色):</label>
+                    <input type="text" id="regInfo" placeholder="例如: 张主任-心内科" style="width: 100%;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="display:block; margin-bottom: 4px;">音频来源 (推荐 5~15 秒清晰语音):</label>
+                    <input type="file" id="regAudioFile" accept="audio/*" style="width: 100%; margin-bottom: 6px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button type="button" id="btnRecordReg" class="btn-secondary" style="padding: 6px 12px; font-size: 13px;">🎙️ 麦克风录制</button>
+                        <span id="regRecordTime" style="font-size: 12px; color: #888;"></span>
+                    </div>
+                </div>
+                <button id="btnSubmitReg" class="btn-success" style="width: 100%;">确认提交注册</button>
+                <div id="regStatus" class="status-msg"></div>
+            </div>
+
+            <!-- 声纹验证与检索测试 -->
+            <div style="background: #fafafa; padding: 14px; border-radius: 6px; border: 1px solid #f0f0f0;">
+                <h3 style="margin: 0 0 12px 0; font-size: 15px; color: #262626;">🔍 声纹比对与检索测试</h3>
+                <div style="margin-bottom: 10px;">
+                    <label style="display:block; margin-bottom: 4px;">测试音频来源 (文件或麦克风录音):</label>
+                    <input type="file" id="testVerifyAudio" accept="audio/*" style="width: 100%; margin-bottom: 6px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button type="button" id="btnRecordVerify" class="btn-secondary" style="padding: 6px 12px; font-size: 13px;">🎙️ 麦克风录制测试语音</button>
+                        <span id="verifyRecordTime" style="font-size: 12px; color: #888;"></span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 14px;">
+                    <button id="btnIdentify" class="btn-purple" style="flex: 1;">1:N 声纹搜索</button>
+                    <button id="btnVerify" class="btn-cyan" style="flex: 1;">1:1 登录验证</button>
+                </div>
+                <div style="margin-top: 12px;">
+                    <label style="display:block; margin-bottom: 4px;">比对结果:</label>
+                    <div id="verifyResult" style="background: white; border: 1px solid #d9d9d9; border-radius: 4px; padding: 8px; font-size: 12px; min-height: 80px; font-family: monospace; white-space: pre-wrap;">等待测试...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 已注册声纹表格 -->
+        <div style="margin-top: 20px;">
+            <h3 style="margin: 0 0 8px 0; font-size: 15px;">📋 当前声纹库特征清单</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>特征 ID (Feature ID)</th>
+                        <th>备注信息 (Feature Info)</th>
+                        <th style="width: 90px; text-align: center;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="voiceprintTableBody">
+                    <tr><td colspan="3" style="text-align: center; color: #999;">点击右上角“刷新列表”获取</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 3. 离线音频识别与分离 -->
+    <div class="card">
+        <h2><span>📁 离线文件整段识别与 Diarization 分离</span></h2>
+        <div class="controls">
+            <input type="file" id="audioFile" accept="audio/*">
+            <button id="btnUpload" class="btn-purple">📁 上传并说话人分离</button>
+            <button id="btnUploadWhole" class="btn-cyan">🔊 仅整段识别 (不分离)</button>
+        </div>
+        <div id="offlineResult" style="background: #fafafa; border: 1px solid #eee; border-radius: 4px; padding: 10px; font-size: 13px; min-height: 50px; font-family: monospace; white-space: pre-wrap;">待上传音频文件...</div>
     </div>
 </div>
 
 <script>
+    const baseUrl = window.location.origin;
+
+    // ==================== 1. 实时 WebSocket 录音与识别 ====================
     let ws = null;
     let audioContext = null;
     let mediaStream = null;
     let processor = null;
-    let segmentCount = 0;
-    let lastStreamingTime = 0;  // 上一次收到流式消息的时间
 
     const btnStart = document.getElementById('btnStart');
     const btnStop = document.getElementById('btnStop');
     const btnFlush = document.getElementById('btnFlush');
     const logBox = document.getElementById('logBox');
     const wsUrlInput = document.getElementById('wsUrl');
-    const finalResults = document.getElementById('finalResults');
-    const segCountEl = document.getElementById('segCount');
-    const streamLatencyEl = document.getElementById('streamLatency');
+    const connStatus = document.getElementById('connStatus');
 
-    // ========== 页面加载时获取模型信息 ==========
-    async function fetchModelInfo() {
-        try {
-            let httpUrl = wsUrlInput.value.replace('ws://', 'http://').replace('wss://', 'https://');
-            httpUrl = httpUrl.split('/ws/asr')[0] + '/api/models';
-            const res = await fetch(httpUrl);
-            const data = await res.json();
-            
-            const infoEl = document.getElementById('modelInfo');
-            let modeText = '';
-            let badgeClass = 'badge-offline';
-            if (data.is_2pass) {
-                modeText = '2pass 模式';
-                badgeClass = 'badge-2pass';
-            } else if (data.streaming_enabled) {
-                modeText = '纯流式模式';
-                badgeClass = 'badge-streaming';
-            } else {
-                modeText = '离线模式';
-                badgeClass = 'badge-offline';
-            }
-            
-            infoEl.innerHTML = `
-                <span class="badge ${badgeClass}">${modeText}</span>
-                <span>精修模型: <strong>${data.asr_model}</strong></span>
-                ${data.streaming_model ? `<span>流式模型: <strong>${data.streaming_model}</strong></span>` : ''}
-                ${data.streaming_chunk_size ? `<span>chunk: ${JSON.stringify(data.streaming_chunk_size)}</span>` : ''}
-            `;
-        } catch(e) {
-            document.getElementById('modelInfo').innerHTML = '<span style="color:#e06c75;">⚠️ 无法连接服务端获取模型信息</span>';
-        }
+    // 自动对齐 host
+    if (wsUrlInput.value.includes("127.0.0.1") && window.location.host) {
+        const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        wsUrlInput.value = `${proto}//${window.location.host}/ws/asr`;
     }
-    fetchModelInfo();
 
-    // ========== 日志输出 ==========
     function appendLog(msg, color = '#abb2bf') {
         const span = document.createElement('span');
         span.style.color = color;
@@ -196,117 +210,43 @@
         logBox.scrollTop = logBox.scrollHeight;
     }
 
-    // ========== 核心：处理服务端返回的消息 ==========
-    function handleServerMessage(data) {
-        // 如果精修结果为空（比如一段纯噪音被抛弃），需要清理掉残留在界面上的流式假阳性文字
-        if (!data.text && data.is_final) {
-            let streamEl = document.getElementById('streamingItem');
-            if (streamEl) {
-                streamEl.remove();
-            }
-            return;
-        }
-        
-        if (!data.text) return;
-        
-        const emptyTip = document.getElementById('emptyTip');
-        if (emptyTip) emptyTip.remove();
-
-        if (data.is_final === false) {
-            // ---- 流式中间结果：动态追加到列表末尾，模拟往里加字 ----
-            let streamEl = document.getElementById('streamingItem');
-            if (!streamEl) {
-                streamEl = document.createElement('div');
-                streamEl.id = 'streamingItem';
-                streamEl.className = 'final-item streaming-item';
-                finalResults.appendChild(streamEl);
-            }
-            streamEl.innerHTML = `<span class="text">${data.text}</span>`;
-            finalResults.scrollTop = finalResults.scrollHeight;
-            
-            // 计算延迟
-            const now = Date.now();
-            if (lastStreamingTime > 0) {
-                streamLatencyEl.textContent = `${now - lastStreamingTime}ms`;
-            }
-            lastStreamingTime = now;
-            
-            // 为了减少日志刷屏，流式日志可以选择注释掉或保留
-            appendLog(`📡 流式: ${data.text}`, '#61afef');
-        } else {
-            // ---- 最终精修结果：移除流式临时项，追加最终精修项进行替换 ----
-            let streamEl = document.getElementById('streamingItem');
-            if (streamEl) {
-                streamEl.remove();
-            }
-            lastStreamingTime = 0;
-            
-            segmentCount++;
-            segCountEl.textContent = segmentCount;
-            
-            // 构建最终结果项
-            const item = document.createElement('div');
-            item.className = 'final-item';
-            
-            let html = '';
-            // 如果有说话人标签
-            if (data.speaker) {
-                html += `<span class="speaker-tag">${data.speaker}</span>`;
-            }
-            // 如果是精修模式，显示标签
-            if (data.mode === 'refined') {
-                html += `<span class="refined-tag">精修</span>`;
-            }
-            html += `<span class="text">${data.text}</span>`;
-            item.innerHTML = html;
-            
-            finalResults.appendChild(item);
-            // 滚动到底部
-            finalResults.scrollTop = finalResults.scrollHeight;
-            
-            const speakerInfo = data.speaker ? ` | 说话人: ${data.speaker}` : '';
-            const modeInfo = data.mode ? ` | 模式: ${data.mode}` : '';
-            appendLog(`✅ 最终: ${data.text}${speakerInfo}${modeInfo}`, '#98c379');
-        }
-    }
-
-    // ========== 录音控制 ==========
     async function startRecording() {
-        // 重置状态
-        segmentCount = 0;
-        segCountEl.textContent = '0';
-        streamLatencyEl.textContent = '-';
-        finalResults.innerHTML = '<div id="emptyTip" style="color: #bbb; font-style: italic; font-size: 14px;">录音中，等待识别结果...</div>';
-        
         try {
-            // 1. 获取麦克风权限并强制 16kHz 采样率单声道
             mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
-            appendLog('麦克风已就绪。', '#98c379');
+            appendLog('麦克风已就绪 (16kHz 单声道)。', '#98c379');
 
-            // 2. 建立 WebSocket 连接
             const mode = document.getElementById('modeSelect').value;
-            const fullUrl = `${wsUrlInput.value}?mode=${mode}`;
+            const userId = (document.getElementById('userIdInput').value || '').trim();
+            let fullUrl = `${wsUrlInput.value}?mode=${mode}`;
+            if (userId) {
+                fullUrl += `&user_id=${encodeURIComponent(userId)}`;
+            }
+
             ws = new WebSocket(fullUrl);
-            
+
+            const livePreview = document.getElementById('livePreviewBox');
+            const streamingTag = document.getElementById('streamingTag');
+            livePreview.innerHTML = '<span style="color: #888;">正在聆听语音...</span>';
+
             ws.onopen = () => {
-                appendLog('WebSocket 连接成功！开始传输音频...', '#98c379');
+                const infoMsg = userId ? `[Mode ${mode}, UserID: ${userId}]` : `[Mode ${mode}]`;
+                appendLog(`WebSocket 连接成功 ${infoMsg}！开始录音推流...`, '#98c379');
+                connStatus.textContent = `已连接 ${infoMsg}`;
+                connStatus.className = 'badge badge-green';
                 btnStart.disabled = true;
                 btnStop.disabled = false;
                 btnFlush.disabled = false;
 
-                // 3. 处理音频流并发送
                 audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
                 const source = audioContext.createMediaStreamSource(mediaStream);
-                // 缓冲区大小 4096，约 0.25 秒收集一次
                 processor = audioContext.createScriptProcessor(4096, 1, 1);
-                
+
                 source.connect(processor);
                 processor.connect(audioContext.destination);
 
                 processor.onaudioprocess = (e) => {
                     if (ws && ws.readyState === WebSocket.OPEN) {
                         const inputData = e.inputBuffer.getChannelData(0);
-                        // 转换 Float32Array 为 16-bit PCM
                         const pcm16 = new Int16Array(inputData.length);
                         for (let i = 0; i < inputData.length; i++) {
                             let s = Math.max(-1, Math.min(1, inputData[i]));
@@ -320,103 +260,394 @@
             ws.onmessage = (e) => {
                 try {
                     const data = JSON.parse(e.data);
-                    handleServerMessage(data);
+                    if (!data.text) return;
+
+                    // 1. 2pass 即时流式出字 (边说边出字 - 中间态)
+                    if (data.is_final === false || data.mode === "2pass-online") {
+                        streamingTag.style.display = 'inline-block';
+                        livePreview.style.color = '#e5c07b';
+                        livePreview.textContent = '🗣️ ' + data.text;
+                        return;
+                    }
+
+                    // 2. 断句定稿 (离线最终态 - is_final: true)
+                    streamingTag.style.display = 'none';
+                    livePreview.style.color = '#98c379';
+                    livePreview.textContent = '✅ ' + data.text;
+
+                    let spkDisplay = data.speaker || "未知说话人";
+                    if (data.speaker_name && data.speaker_name !== data.speaker) {
+                        spkDisplay = `${data.speaker_name} (${data.speaker})`;
+                    }
+                    if (data.role) {
+                        spkDisplay += ` [${data.role}]`;
+                    }
+                    let logText = `🎯 确认定稿: "${data.text}" | 说话人: ${spkDisplay}`;
+                    if (data.avatar_url) {
+                        logText += ` [头像: ${data.avatar_url}]`;
+                    }
+                    appendLog(logText, '#61afef');
+
                 } catch(err) {
-                    appendLog(`收到未知消息: ${e.data}`, '#e5c07b');
+                    appendLog(`收到消息: ${e.data}`, '#e5c07b');
                 }
             };
 
             ws.onerror = (err) => {
-                appendLog('WebSocket 发生错误！', '#e06c75');
+                appendLog('WebSocket 连接发生错误！', '#e06c75');
+                connStatus.textContent = '连接异常';
+                connStatus.className = 'badge badge-blue';
             };
 
             ws.onclose = () => {
-                appendLog('WebSocket 连接已关闭。', '#e06c75');
+                appendLog('WebSocket 连接已关闭。', '#e5c07b');
+                connStatus.textContent = '已断开';
+                connStatus.className = 'badge badge-blue';
                 stopRecording();
             };
 
         } catch (err) {
-            appendLog('获取麦克风失败: ' + err.message, '#e06c75');
+            appendLog(`无法打开麦克风: ${err.message}`, '#e06c75');
         }
     }
 
     function stopRecording() {
         if (processor) { processor.disconnect(); processor = null; }
-        if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
         if (audioContext) { audioContext.close(); audioContext = null; }
-        if (ws) { ws.close(); ws = null; }
-        
+        if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+        if (ws) {
+            if (ws.readyState === WebSocket.OPEN) ws.close();
+            ws = null;
+        }
         btnStart.disabled = false;
         btnStop.disabled = true;
         btnFlush.disabled = true;
-        appendLog('已停止录音。', '#e5c07b');
+        const streamingTag = document.getElementById('streamingTag');
+        if (streamingTag) streamingTag.style.display = 'none';
     }
 
-    function sendFlush() {
+    btnStart.onclick = startRecording;
+    btnStop.onclick = stopRecording;
+    btnFlush.onclick = () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send("flush");
-            appendLog('已发送手动断句信号 (flush)。', '#c678dd');
+            appendLog('已发送断句 (Flush) 信号', '#d19a66');
+        }
+    };
+
+    // ==================== 2. 声纹库管理与接口测试 ====================
+
+    // 加载声纹库列表
+    async function loadVoiceprintList() {
+        const tbody = document.getElementById('voiceprintTableBody');
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #888;">正在加载中...</td></tr>';
+        try {
+            const resp = await fetch('/api/voiceprint/feature/list');
+            const result = await resp.json();
+            if (result.success && result.features) {
+                if (result.features.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #999;">特征库暂无声纹，请先在上方注册</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = '';
+                result.features.forEach(f => {
+                    const fid = f.featureId || f.feature_id || f;
+                    const finfo = f.featureInfo || f.feature_info || '-';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>${fid}</strong></td>
+                        <td>${finfo}</td>
+                        <td style="text-align: center;">
+                            <button class="btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="deleteVoiceprint('${fid}')">删除</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                tbody.innerHTML = `<tr><td colspan="3" style="color: red;">获取失败: ${result.message || '未知错误'}</td></tr>`;
+            }
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="3" style="color: red;">请求失败: ${e.message}</td></tr>`;
         }
     }
 
-    // ========== 离线分离测试 ==========
-    const btnUpload = document.getElementById('btnUpload');
-    const audioFileInput = document.getElementById('audioFile');
+    // 删除声纹
+    window.deleteVoiceprint = async function(featureId) {
+        if (!confirm(`确定要删除声纹特征 [${featureId}] 吗？`)) return;
+        try {
+            const resp = await fetch('/api/voiceprint/feature/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ feature_ids: [featureId] })
+            });
+            const res = await resp.json();
+            if (res.success) {
+                alert('删除成功！');
+                loadVoiceprintList();
+            } else {
+                alert('删除失败: ' + (res.message || '未知错误'));
+            }
+        } catch(e) {
+            alert('请求异常: ' + e.message);
+        }
+    };
 
-    btnUpload.addEventListener('click', async () => {
-        await doOfflineUpload('/api/offline-diarize', btnUpload, '📁 上传并分离', '离线分离成功', '离线分离失败');
-    });
+    // 基于 AudioContext + ScriptProcessor 的真实 WAV 录音
+    // （MediaRecorder 默认产出 WebM/Opus，服务端 torchaudio/soundfile 均无法直接解析）
+    function createWavRecorder() {
+        let ctx = null, processor = null, source = null, stream = null;
+        let chunks = [];
+        return {
+            state: 'inactive',
+            async start() {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                ctx = new (window.AudioContext || window.webkitAudioContext)();
+                source = ctx.createMediaStreamSource(stream);
+                processor = ctx.createScriptProcessor(4096, 1, 1);
+                chunks = [];
+                processor.onaudioprocess = e => {
+                    if (this.state !== 'recording') return;
+                    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+                };
+                source.connect(processor);
+                processor.connect(ctx.destination);
+                this.state = 'recording';
+            },
+            stop() {
+                this.state = 'inactive';
+                try { processor.disconnect(); } catch(e) {}
+                try { source.disconnect(); } catch(e) {}
+                if (stream) stream.getTracks().forEach(t => t.stop());
+                if (ctx) ctx.close();
+                // 拼接并封装为 WAV 容器
+                const total = chunks.reduce((s, c) => s + c.length, 0);
+                const pcm = new Float32Array(total);
+                let off = 0;
+                chunks.forEach(c => { pcm.set(c, off); off += c.length; });
+                const sampleRate = ctx ? ctx.sampleRate : 48000;
+                const bytes = new ArrayBuffer(44 + total * 2);
+                const view = new DataView(bytes);
+                const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+                writeStr(0, 'RIFF'); view.setUint32(4, 36 + total * 2, true); writeStr(8, 'WAVE');
+                writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+                view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+                view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+                writeStr(36, 'data'); view.setUint32(40, total * 2, true);
+                for (let i = 0; i < total; i++) {
+                    const v = Math.max(-1, Math.min(1, pcm[i]));
+                    view.setInt16(44 + i * 2, v < 0 ? v * 32768 : v * 32767, true);
+                }
+                chunks = [];
+                return new Blob([bytes], { type: 'audio/wav' });
+            }
+        };
+    }
 
-    const btnUploadWhole = document.getElementById('btnUploadWhole');
-    btnUploadWhole.addEventListener('click', async () => {
-        await doOfflineUpload('/api/offline-asr', btnUploadWhole, '🔊 仅识别整段 (不分离)', '整段识别成功', '整段识别失败');
-    });
+    // 麦克风录制注册音频
+    let regRecorder = null;
+    let regAudioChunks = [];
+    let regAudioBlob = null;
+    let regTimer = null;
+    let regSeconds = 0;
+    const btnRecordReg = document.getElementById('btnRecordReg');
+    const regRecordTime = document.getElementById('regRecordTime');
 
-    async function doOfflineUpload(apiPath, btnElement, defaultText, successMsg, failMsg) {
-        const file = audioFileInput.files[0];
-        if (!file) {
-            alert("请先选择一个音频文件！");
+    btnRecordReg.onclick = async () => {
+        if (!regRecorder || regRecorder.state === 'inactive') {
+            try {
+                regRecorder = createWavRecorder();
+                await regRecorder.start();
+                regSeconds = 0;
+                btnRecordReg.textContent = '⏹ 停止录音';
+                btnRecordReg.className = 'btn-danger';
+                regTimer = setInterval(() => {
+                    regSeconds++;
+                    regRecordTime.textContent = `正在录音: ${regSeconds}s...`;
+                }, 1000);
+            } catch(e) {
+                alert('获取麦克风失败: ' + e.message);
+            }
+        } else {
+            regAudioBlob = regRecorder.stop();
+            clearInterval(regTimer);
+            regRecordTime.textContent = `已录制 (${regSeconds}秒)，可点击提交`;
+            btnRecordReg.textContent = '🎙️ 重新录制';
+            btnRecordReg.className = 'btn-secondary';
+        }
+    };
+
+    // 提交注册
+    document.getElementById('btnSubmitReg').onclick = async () => {
+        const fid = document.getElementById('regId').value.trim();
+        const finfo = document.getElementById('regInfo').value.trim();
+        const fileInput = document.getElementById('regAudioFile');
+        const statusDiv = document.getElementById('regStatus');
+
+        if (!fid) {
+            alert('请输入特征ID (用户ID/工号)！');
             return;
         }
 
-        btnElement.disabled = true;
-        btnElement.innerText = "处理中...";
-        appendLog(`开始上传文件 ${file.name} 到 ${apiPath}，请稍候...`, '#c678dd');
+        let audioBlob = fileInput.files[0] || regAudioBlob;
+        if (!audioBlob) {
+            alert('请上传音频文件或使用麦克风录制一段音频！');
+            return;
+        }
 
         const formData = new FormData();
-        formData.append('audio_file', file);
+        formData.append('audio_file', audioBlob, 'voiceprint.wav');
+        formData.append('feature_id', fid);
+        if (finfo) formData.append('feature_info', finfo);
+
+        statusDiv.style.color = '#1890ff';
+        statusDiv.textContent = '正在上传并提取声纹特征...';
 
         try {
-            // 解析当前的 ws 地址转为 http 地址
-            let uploadUrl = wsUrlInput.value.replace('ws://', 'http://').replace('wss://', 'https://');
-            uploadUrl = uploadUrl.split('/ws/asr')[0] + apiPath;
-            
-            const response = await fetch(uploadUrl, {
+            const resp = await fetch('/api/voiceprint/feature/register', {
                 method: 'POST',
                 body: formData
             });
-            
-            const result = await response.json();
-            if (response.ok && result.code === 200) {
-                if (apiPath === '/api/offline-diarize') {
-                    appendLog(`✅ ${successMsg}，片段数: ${result.data ? result.data.length : 0}\n${JSON.stringify(result.data, null, 2)}`, '#98c379');
-                } else {
-                    appendLog(`✅ ${successMsg}\n整段文本: ${result.text}`, '#98c379');
-                }
+            const res = await resp.json();
+            if (res.success) {
+                statusDiv.style.color = '#52c41a';
+                statusDiv.textContent = `✅ 注册成功！特征ID: ${res.feature_id}`;
+                document.getElementById('regId').value = '';
+                document.getElementById('regInfo').value = '';
+                fileInput.value = '';
+                regAudioBlob = null;
+                regRecordTime.textContent = '';
+                loadVoiceprintList();
             } else {
-                appendLog(`❌ ${failMsg}: ${result.detail || result.message || JSON.stringify(result)}`, '#e06c75');
+                statusDiv.style.color = '#ff4d4f';
+                statusDiv.textContent = `❌ 注册失败: ${res.message || JSON.stringify(res)}`;
             }
-        } catch (err) {
-            appendLog(`❌ 请求错误: ${err.message}`, '#e06c75');
-        } finally {
-            btnElement.disabled = false;
-            btnElement.innerText = defaultText;
+        } catch(e) {
+            statusDiv.style.color = '#ff4d4f';
+            statusDiv.textContent = `❌ 请求错误: ${e.message}`;
         }
-    }
+    };
 
-    btnStart.addEventListener('click', startRecording);
-    btnStop.addEventListener('click', stopRecording);
-    btnFlush.addEventListener('click', sendFlush);
+    // 麦克风录制测试音频 (用于 1:1 验证与 1:N 搜索)
+    let verifyRecorder = null;
+    let verifyAudioChunks = [];
+    let verifyAudioBlob = null;
+    let verifyTimer = null;
+    let verifySeconds = 0;
+    const btnRecordVerify = document.getElementById('btnRecordVerify');
+    const verifyRecordTime = document.getElementById('verifyRecordTime');
+
+    btnRecordVerify.onclick = async () => {
+        if (!verifyRecorder || verifyRecorder.state === 'inactive') {
+            try {
+                verifyRecorder = createWavRecorder();
+                await verifyRecorder.start();
+                verifySeconds = 0;
+                btnRecordVerify.textContent = '⏹ 停止录音';
+                btnRecordVerify.className = 'btn-danger';
+                verifyTimer = setInterval(() => {
+                    verifySeconds++;
+                    verifyRecordTime.textContent = `正在录音: ${verifySeconds}s...`;
+                }, 1000);
+            } catch(e) {
+                alert('获取麦克风失败: ' + e.message);
+            }
+        } else {
+            verifyAudioBlob = verifyRecorder.stop();
+            clearInterval(verifyTimer);
+            verifyRecordTime.textContent = `已录制 (${verifySeconds}秒)，可点击下方按钮测试`;
+            btnRecordVerify.textContent = '🎙️ 重新录制';
+            btnRecordVerify.className = 'btn-secondary';
+        }
+    };
+
+    // 1:N 声纹搜索
+    document.getElementById('btnIdentify').onclick = async () => {
+        const fileInput = document.getElementById('testVerifyAudio');
+        const resBox = document.getElementById('verifyResult');
+        let audioBlob = (fileInput.files && fileInput.files[0]) || verifyAudioBlob;
+        if (!audioBlob) {
+            alert('请先选择测试音频文件，或点击“麦克风录制测试语音”录音！');
+            return;
+        }
+
+        resBox.textContent = '正在检索匹配声纹...';
+        const formData = new FormData();
+        formData.append('audio_file', audioBlob, 'test_verify.wav');
+        formData.append('top_k', '3');
+
+        try {
+            const resp = await fetch('/api/voiceprint/identify', { method: 'POST', body: formData });
+            const res = await resp.json();
+            resBox.textContent = JSON.stringify(res, null, 2);
+        } catch(e) {
+            resBox.textContent = '请求异常: ' + e.message;
+        }
+    };
+
+    // 1:1 登录验证
+    document.getElementById('btnVerify').onclick = async () => {
+        const fileInput = document.getElementById('testVerifyAudio');
+        const resBox = document.getElementById('verifyResult');
+        let audioBlob = (fileInput.files && fileInput.files[0]) || verifyAudioBlob;
+        if (!audioBlob) {
+            alert('请先选择测试音频文件，或点击“麦克风录制测试语音”录音！');
+            return;
+        }
+
+        resBox.textContent = '正在验证身份...';
+        const formData = new FormData();
+        formData.append('audio_file', audioBlob, 'test_verify.wav');
+
+        try {
+            const resp = await fetch('/api/speaker/verify', { method: 'POST', body: formData });
+            const res = await resp.json();
+            resBox.textContent = JSON.stringify(res, null, 2);
+        } catch(e) {
+            resBox.textContent = '请求异常: ' + e.message;
+        }
+    };
+
+    // ==================== 3. 离线音频文件测试 ====================
+    document.getElementById('btnUpload').onclick = async () => {
+        const fileInput = document.getElementById('audioFile');
+        const resBox = document.getElementById('offlineResult');
+        if (!fileInput.files[0]) { alert('请选择音频文件！'); return; }
+
+        resBox.textContent = '正在上传并进行离线说话人分离 (耗时可能稍长)...';
+        const formData = new FormData();
+        formData.append('audio_file', fileInput.files[0]);
+
+        try {
+            const resp = await fetch('/api/offline-diarize', { method: 'POST', body: formData });
+            const res = await resp.json();
+            resBox.textContent = JSON.stringify(res, null, 2);
+        } catch(e) {
+            resBox.textContent = '请求错误: ' + e.message;
+        }
+    };
+
+    document.getElementById('btnUploadWhole').onclick = async () => {
+        const fileInput = document.getElementById('audioFile');
+        const resBox = document.getElementById('offlineResult');
+        if (!fileInput.files[0]) { alert('请选择音频文件！'); return; }
+
+        resBox.textContent = '正在上传并进行整段识别...';
+        const formData = new FormData();
+        formData.append('audio_file', fileInput.files[0]);
+
+        try {
+            const resp = await fetch('/api/offline-asr', { method: 'POST', body: formData });
+            const res = await resp.json();
+            resBox.textContent = JSON.stringify(res, null, 2);
+        } catch(e) {
+            resBox.textContent = '请求错误: ' + e.message;
+        }
+    };
+
+    // 页面初次加载时拉取声纹列表
+    window.onload = () => {
+        loadVoiceprintList();
+    };
 </script>
 
 </body>
