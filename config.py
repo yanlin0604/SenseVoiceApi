@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     model_cache_dir: str = "./models_cache"
 
     # 声纹比对相似度阈值
-    sv_similarity_threshold: float = 0.6
+    sv_similarity_threshold: float = 0.55
 
     # Audio slicing & VAD param
     vad_max_end_silence_time: int = 800
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # 纯本地声纹管理配置 (100% 纯本地化，无外部云厂商依赖)
     local_voiceprint_dir: str = "voiceprint_db"
-    local_voiceprint_threshold: float = 0.4
+    local_voiceprint_threshold: float = 0.50
     default_group_id: str = "iFLYTEK_voiceprint_group"
 
     # Milvus 向量库配置 (可选，用于本地声纹高维向量索引与1:N极速检索)

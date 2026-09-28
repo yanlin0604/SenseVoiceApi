@@ -215,18 +215,40 @@ class LocalVoiceprintClient:
             os.unlink(temp_file.name)
             raise e
 
+    def _filter_active_speech(self, audio_arr: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
+        """
+        使用 VAD 过滤音频开头、结尾和中间的空白与静音，提取纯净人声。
+        如果不含明显语音或 VAD 不可用，平滑返回原音频。
+        """
+        try:
+            from models.engine_loader import engine_loader
+            vad = getattr(engine_loader, "vad_model", None)
+            if vad is not None and callable(getattr(vad, "generate", None)):
+                vad_res = vad.generate(input=audio_arr)
+                if vad_res and len(vad_res) > 0 and "value" in vad_res[0]:
+                    segments = vad_res[0]["value"]
+                    if segments:
+                        pieces = []
+                        for start_ms, end_ms in segments:
+                            s_idx = max(0, int((start_ms / 1000.0) * sample_rate))
+                            e_idx = min(len(audio_arr), int((end_ms / 1000.0) * sample_rate))
+                            if e_idx > s_idx:
+                                pieces.append(audio_arr[s_idx:e_idx])
+                        if pieces:
+                            speech_audio = np.concatenate(pieces)
+                            if len(speech_audio) >= int(0.2 * sample_rate):  # 至少 200ms
+                                logger.info(
+                                    f"[本地声纹预处理] VAD 过滤静音成功: 原始音频 {len(audio_arr)/sample_rate:.2f}s -> 纯人声 {len(speech_audio)/sample_rate:.2f}s"
+                                )
+                                return speech_audio
+        except Exception as e:
+            logger.warning(f"[本地声纹预处理] VAD 提取人声异常，使用原音频: {e}")
+        return audio_arr
+
     def _extract_embedding(
         self, audio_data: Union[bytes, np.ndarray, str]
     ) -> Optional[np.ndarray]:
-        """
-        提取音频的声纹 embedding (内存直推 + 单次前向推理 + 自动设备对齐 + 长度截断)
-
-        Args:
-            audio_data: 音频数据（PCM bytes、numpy 数组或文件路径）
-
-        Returns:
-            声纹 embedding 向量，失败返回 None
-        """
+        """提取音频的声纹 embedding (VAD提取纯净人声 + 完整音频推理不截断 + L2归一化)"""
         temp_file = None
         try:
             pipeline = get_sv_pipeline()
@@ -261,24 +283,30 @@ class LocalVoiceprintClient:
                 if audio_arr.dtype == np.int16 or (len(audio_arr) > 0 and np.max(np.abs(audio_arr)) > 1.0):
                     audio_arr = audio_arr / 32767.0
 
-            # 2. 内存直通极速推理（单次 forward，Kaldi fbank + CNN 在内存直接完成）
+            # 2. 内存直通极速推理（先用 VAD 过滤空白与静音，保留完整纯人声，不按原音频暴力截断）
             if audio_arr is not None and len(audio_arr) > 0:
-                # 截断有效语音（最长 6 秒 = 96000 个采样点，削减长音频计算量，避免无谓消耗）
-                max_samples = 16000 * 6
-                if len(audio_arr) > max_samples:
-                    audio_arr = audio_arr[:max_samples]
+                audio_arr = self._filter_active_speech(audio_arr, 16000)
 
                 model = getattr(pipeline, "model", None)
                 if model is not None and callable(model):
                     with torch.no_grad():
                         emb_res = model(audio_arr)
+
+                    raw_emb = None
                     if isinstance(emb_res, torch.Tensor):
-                        return emb_res.squeeze().detach().cpu().numpy()
+                        raw_emb = emb_res.squeeze().detach().cpu().numpy()
                     elif isinstance(emb_res, np.ndarray):
-                        return emb_res.squeeze()
+                        raw_emb = emb_res.squeeze()
                     elif isinstance(emb_res, list) and len(emb_res) > 0:
                         item = emb_res[0]
-                        return item.squeeze().detach().cpu().numpy() if isinstance(item, torch.Tensor) else np.array(item).squeeze()
+                        raw_emb = item.squeeze().detach().cpu().numpy() if isinstance(item, torch.Tensor) else np.array(item).squeeze()
+
+                    if raw_emb is not None:
+                        raw_emb = raw_emb.flatten().astype(np.float32)
+                        norm = np.linalg.norm(raw_emb)
+                        if norm > 0:
+                            raw_emb = raw_emb / norm
+                        return raw_emb
 
             # 3. 兜底回退：如果直通失败，走原有 pipeline 文件途径
             logger.debug("[本地声纹] 直通推理未生效，降级使用 pipeline 提取")
@@ -290,7 +318,11 @@ class LocalVoiceprintClient:
 
             result = pipeline([audio_path, audio_path], output_emb=True)
             if "embs" in result and len(result["embs"]) > 0:
-                return np.array(result["embs"][0])
+                raw_emb = np.array(result["embs"][0]).flatten().astype(np.float32)
+                norm = np.linalg.norm(raw_emb)
+                if norm > 0:
+                    raw_emb = raw_emb / norm
+                return raw_emb
 
             logger.warning("[本地声纹] 提取 embedding 失败")
             return None
