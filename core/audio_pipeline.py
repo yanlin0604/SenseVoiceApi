@@ -8,7 +8,7 @@ from models.engine_loader import engine_loader
 from services.webhook_client import webhook_client
 from services.speaker_service import get_speaker_info_from_api, get_candidate_feature_ids
 from routers.voiceprint import get_voiceprint_backend
-from modules.text_formatter import format_str_v3
+from modules.text_formatter import format_str_v3, is_filler_only
 from config import config
 from core.concurrency import limit_vad, limit_asr, limit_sv
 from typing import Optional
@@ -166,7 +166,8 @@ class AudioPipeline:
                                         if p_text and p_text != self.last_partial_text:
                                             self.last_partial_text = p_text
                                             self.last_partial_time = now
-                                            if websocket:
+                                            # 单独识别出的语气助词（嗯/哦/呃…）不上屏，避免残留在实时出字面板
+                                            if websocket and not is_filler_only(p_text):
                                                 await websocket.send_json({
                                                     "session_id": self.session_id,
                                                     "text": p_text,
@@ -229,6 +230,13 @@ class AudioPipeline:
 
             if not text.strip():
                 return
+
+            # 2pass 定稿若整段仅识别出语气助词（嗯/哦/呃…），整段丢弃：
+            # 不推 Java webhook、不触发下游字段提取、也不回传前端转写面板
+            if is_filler_only(text):
+                logger.info(f"[{self.session_id}] 丢弃纯语气词定稿: {text}")
+                return
+
             logger.info(f"[{self.session_id}] 识别结果: {text}")
             
             # 2. 说话人识别与分离逻辑

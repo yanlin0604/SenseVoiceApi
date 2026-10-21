@@ -3,6 +3,7 @@
 包含情绪、事件字典和文本格式化函数
 """
 import re
+import unicodedata
 
 
 # 情绪字典
@@ -123,7 +124,12 @@ def format_str_v2(s: str) -> str:
 
 
 try:
-    from funasr.utils.postprocess_utils import rich_transcription_postprocess as _official_postprocess
+    # 用 importlib 动态导入：funasr 是可选运行时依赖，本地/CI 未必安装，
+    # 静态解析会误报未解析导入；此处行为不变，导入失败仍由 except 兜底
+    from importlib import import_module
+    _official_postprocess = import_module(
+        "funasr.utils.postprocess_utils"
+    ).rich_transcription_postprocess
 except Exception:
     _official_postprocess = None
 
@@ -224,3 +230,50 @@ def remove_punctuation(text: str) -> str:
         text = text.replace(punct, '')
     
     return text.strip()
+
+
+# 语气助词集合（单独成段时无实际语义，可直接丢弃）
+# 仅收录纯叹词字符。刻意不收录「呀/啦/哈/嘛」等易与实词拼合的字符，
+# 以保证「哎呀」「哎哟」「哈哈」等可能携带疼痛/情绪信息的叹词不会被误丢。
+# 判定采用「逐字符均属语气助词」策略，因此「嗯哦」「嗯嗯」「呃……」等重复/组合仍可命中。
+FILLER_WORDS = set("嗯哦呃啊唉哎喔噢诶欸唔")
+
+# 判定语气词段时需剔除的标点与空白
+
+def _strip_punct_and_space(text: str) -> str:
+    """
+    剔除所有 Unicode 标点、符号、空白与控制字符，仅保留可参与语义判定的字符。
+
+    不用手写标点字符集：那容易漏掉全角变体（如 U+FF0E `．`、U+FF3F `＿`）
+    等异体标点，导致「嗯．」这类段落漏网。改用 unicodedata 分类判定（P/S/Z/C）
+    可一次性覆盖全部 Unicode 标点与符号。
+    """
+    return "".join(
+        ch for ch in text
+        if not (ch.isspace() or unicodedata.category(ch)[0] in "PSZC")
+    )
+
+
+def is_filler_only(text: str) -> bool:
+    """
+    判断整段文本是否仅由语气助词（及标点/空白）构成，即无实际语义内容。
+
+    用于 2pass 定稿过滤：ASR 单独识别出的「嗯」「哦」「呃。」等片段
+    应整段丢弃，不应污染转写面板、webhook 推送和下游字段提取。
+
+    Args:
+        text: 待判定的识别文本
+
+    Returns:
+        True 表示整段无实际语义（仅语气助词或标点）；
+        空字符串返回 False，由调用方自行处理。
+    """
+    if not text:
+        return False
+
+    compact = _strip_punct_and_space(text)
+    if not compact:
+        # 仅标点/空白，同样视为无意义片段
+        return True
+
+    return all(ch in FILLER_WORDS for ch in compact)
